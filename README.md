@@ -1,53 +1,88 @@
-# Planificación Multiobjetivo de Observación Satelital
+# Algoritmos avanzados de búsqueda y optimización — Planificación satelital
 
-Este repositorio implementa el proyecto **“Planificación Multiobjetivo de Observación Satelital para Cobertura de Eventos Críticos”**. El código modela constelaciones LEO de 5 satélites, genera 60 objetivos críticos con 800 oportunidades de observación y ejecuta las tres etapas descritas en el informe: modelado formal, desarrollo de metaheurísticas evolutivas/híbridas y experimentación comparativa.
+Ignacio Carbajal · Federico Diaz · Joaquín Perez  
+29 de noviembre de 2025
 
-## Alcance del proyecto
-- **Modelado formal** con restricciones de energía, ventanas temporales, maniobras (Δθ) y cobertura mínima de objetivos críticos (m_t ≥ 1).
-- **Función multiobjetivo**: maximizar cobertura priorizada (se minimiza `-coverage`), minimizar consumo energético y minimizar el makespan sobre zonas críticas.
-- **Metaheurísticas**: heurística greedy (baseline), NSGA-II, MOSA y refinamiento híbrido NSGA-II + Tabu Search.
-- **Simulación y resultados**: generador de instancias, ejecución multi-seed (30 corridas) y cálculo de métricas (cobertura %, energía, tiempo, hipervolumen normalizado).
+## Introducción
+Las constelaciones modernas de satélites deben decidir qué observar, cuándo y con qué satélite, bajo límites de energía, visibilidad y tiempo operativo. Esto es crítico ante incendios, inundaciones o tormentas severas, donde la rapidez y calidad de la información son clave.
 
-## Ejecución
-1. Instala dependencias (Python 3.12 recomendado):
-   ```
-   pip install -r requirements.txt
-   ```
-2. Lanza la campaña experimental alineada con el informe (5 satélites, 60 objetivos, 800 oportunidades, 30 semillas):
-   ```
-   python -m src.run_experiments --sat 5 --targets 60 --ops 800 --seeds 30
-   ```
-3. Revisa `outputs/` para encontrar:
-   - `baseline.csv`, `front_nsga2.csv`, `mosa.csv`, `tabu.csv`
-   - `summary_metrics.csv` (promedios de cobertura, energía, tiempo y HV)
-   - `success_metrics.json` (≥90 % cobertura crítica, reducción de energía vs. greedy, hipervolumen global)
-   - Gráficas: `pareto_nsga2.png`, `pareto_mosa.png`, `pareto_all.png`
-4. (Opcional) Genera un dashboard HTML interactivo para presentar los resultados:
-   ```
-   python -m src.generate_dashboard
-   ```
-   El archivo `outputs/dashboard.html` incluye los frentes de Pareto, los promedios por algoritmo y las métricas de éxito listas para incrustar en el informe.
+El objetivo es construir un sistema de optimización multiobjetivo que genere planes de observación balanceando tres criterios:
+- **Cobertura**: maximizar la información útil obtenida (se minimiza `-coverage`).
+- **Energía**: minimizar el consumo energético.
+- **Tiempo crítico (makespan)**: minimizar el tiempo necesario para cubrir objetivos críticos.
 
-## Resultados reportados en el documento
-| Algoritmo         | Cobertura (%) | Energía (unid.) | Tiempo (s) | Hipervolumen |
-|-------------------|---------------|-----------------|------------|--------------|
-| Greedy            | 65.2          | 100             | 2.3        | 0.42         |
-| MOSA              | 78.5          | 83              | 15.6       | 0.67         |
-| NSGA-II           | 89.7          | 76              | 24.1       | 0.82         |
-| NSGA-II + Tabú    | 91.4          | 73              | 28.5       | 0.86         |
+Se comparan dos enfoques: una heurística **Greedy** y la metaheurística evolutiva **NSGA-II**. Cualquier solución se repara para cumplir restricciones básicas de factibilidad.
 
-Estos valores sirven como referencia: la tubería `run_experiments` replica la configuración (30 semillas) y registra las métricas que alimentan la tabla anterior. El umbral de éxito descrito en el informe (≥90 % cobertura, ≥20 % reducción energética frente a greedy y hipervolumen > 0.75) se verifica automáticamente en `success_metrics.json`.
+## Estado del arte (resumen)
+- **MILP**: exacto pero poco escalable para cientos de oportunidades.
+- **Heurísticas Greedy**: rápidas, pero de menor calidad.
+- **Metaheurísticas multiobjetivo (NSGA-II)**: exploran amplio espacio y producen frentes Pareto diversos; recomendadas en estudios de NASA y ESA para balancear calidad/tiempo.
 
-## Componentes principales
-- `src/data.py`: generador de instancias (5 satélites, 60 objetivos, 800 oportunidades) con prioridades, nubosidad y presupuestos energéticos/temporales.
-- `src/evaluate.py`: calcula los tres objetivos, repara solapes, penaliza observaciones críticas no atendidas y expone métricas auxiliares.
-- `src/greedy.py`: heurística baseline valor/energía y wrapper `run_baseline` reutilizable entre semillas.
-- `src/nsga2_run.py`: NSGA-II (población 200, 300 generaciones, crossover 0.8, mutación 0.1) con capacidad de inyectar instancias compartidas.
-- `src/mosa.py`: implementación de MOSA con vecindarios flip/swap y enfriamiento progresivo.
-- `src/tabu.py`: mejora local enfocada en reducir energía manteniendo cobertura (cov_tolerance configurable).
-- `src/run_experiments.py`: orquesta las 30 corridas, calcula hipervolumen normalizado, selecciona soluciones representativas y genera reportes/figuras.
+## Modelado formal (simplificado)
+- Conjuntos: satélites `S`, objetivos `T`, oportunidades `O`.
+- Parámetros de cada oportunidad: satélite, objetivo, ventana temporal, energía requerida, valor informativo (prioridad).
+- Variables: `x_o ∈ {0,1}` indica si se toma la oportunidad `o`.
+- Objetivos (minimización):
+  - `f1 = - Σ x_o · valor(o)` (equivale a maximizar cobertura).
+  - `f2 = Σ x_o · energía(o)`.
+  - `f3 = max(fin de la primera observación de cada objetivo crítico)` (makespan crítico).
+- Restricciones aplicadas vía reparación:
+  - Un satélite no puede observar dos objetivos a la vez.
+  - Energía total no supera el presupuesto por satélite.
+  - Cada objetivo crítico se observa al menos una vez.
 
-## Notas y próximos pasos
-- Todos los algoritmos minimizan (`neg_coverage`, energía, makespan). La cobertura priorizada se interpreta como `%` respecto al máximo esperado de la instancia.
-- Las gráficas usan cobertura (%) vs. energía para facilitar la comparación visual mencionada en la discusión del informe.
-- Las líneas futuras propuestas (aprendizaje para ajustar órbitas, nubosidad en tiempo real, constelaciones de 20 satélites) pueden montarse sobre el generador y las mismas plantillas de evaluación.
+## Algoritmos implementados
+### 1) Heurística Greedy (baseline)
+- Métrica: `score(o) = valor(o) / energía(o)`.
+- Se agregan oportunidades en orden decreciente del score y se repara para resolver conflictos.
+- Ventaja: muy rápido y simple. Desventaja: explora poco y suele quedar lejos del óptimo.
+
+### 2) NSGA-II (metaheurística evolutiva multiobjetivo)
+- Construye una población inicial aleatoria.
+- Evalúa con los tres objetivos y ordena por dominancia de Pareto.
+- Usa crossover y mutación binaria; mantiene diversidad con crowding distance.
+- Repite varias generaciones, entregando un frente de soluciones no dominadas (compromisos cobertura/energía/tiempo).
+
+## Generación de instancias y entorno experimental
+- Instancias sintéticas con **5 satélites**, **60 objetivos**, **800 oportunidades**.
+- Probabilidad de nubosidad atenúa el valor esperado de cobertura.
+- Python 3.12, `numpy` y `pymoo` (NSGA-II), más utilidades propias de evaluación y reparación.
+- Cada algoritmo se ejecuta **30 semillas** para promediar resultados.
+
+## Resultados promedio esperados (guía)
+| Algoritmo | Cobertura | Energía usada | Makespan crítico |
+|-----------|-----------|---------------|------------------|
+| Greedy    | ~65%      | Alta          | Bajo             |
+| NSGA-II   | 90%+      | Menor         | Medio            |
+
+NSGA-II supera ampliamente al Greedy en cobertura y uso de energía al explorar combinaciones que el baseline no considera.
+
+## Cómo ejecutar
+1) Instala dependencias (Python 3.12 recomendado):
+```bash
+pip install -r requirements.txt
+```
+2) Corre la campaña experimental (Greedy vs NSGA-II, 30 semillas):
+```bash
+python -m src.run_experiments --sat 5 --targets 60 --ops 800 --seeds 30
+```
+3) Revisa `outputs/`:
+   - `baseline.csv` (Greedy), `front_nsga2.csv` (frente NSGA-II), `summary_metrics.csv`, `success_metrics.json`.
+   - Gráfica comparativa `pareto_greedy_nsga.png` (cobertura vs energía).
+4) (Opcional) Genera dashboard HTML:
+```bash
+python -m src.generate_dashboard
+```
+El archivo `outputs/dashboard.html` muestra frentes y promedios de Greedy vs NSGA-II.
+
+## Conclusiones
+- El problema satelital se adapta naturalmente a un enfoque multiobjetivo.
+- Greedy es útil como baseline rápido, pero insuficiente en calidad.
+- NSGA-II es la mejor herramienta en este alcance: produce soluciones robustas y variadas.
+- Extensible a nubosidad en tiempo real o constelaciones más grandes (10–20 satélites).
+
+## Referencias
+- Deb, K. (2002). NSGA-II: A fast and elitist multiobjective genetic algorithm. IEEE TEC.
+- Glover, F. (1989). Tabu Search. ORSA Journal on Computing.
+- Chien, S. et al. (2016). Autonomous planning for spacecraft and satellites. NASA Ames.
+- Basso, S. & Pulido, J. (2021). Multiobjective optimization in Earth observation planning. Acta Astronautica.
