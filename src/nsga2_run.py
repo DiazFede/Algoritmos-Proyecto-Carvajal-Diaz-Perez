@@ -24,7 +24,7 @@ class SatProblem(ElementwiseProblem):
         out["F"] = np.array(objs, dtype=float)
 
 def run_nsga2(n_sat=5, n_targets=60, n_ops=800, seed=0,
-              pop_size=200, n_gen=300, p_c=0.8, p_m=0.1, inst=None):
+              pop_size=200, n_gen=30, p_c=0.8, p_m=0.1, inst=None):
     """
     NSGA-II configuration aligned with the report:
     - population 200, 300 generations
