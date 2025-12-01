@@ -4,14 +4,33 @@ from collections import defaultdict
 from .data import Instance
 
 def expected_value(op, targets):
-    w = targets[op.tid].priority
-    return w * op.cov * (1.0 - op.p_cloud)
+    """
+    Calcula el valor esperado de una oportunidad.
+
+    Args:
+        op (Opportunity): Oportunidad de observación.
+        targets (list): Lista de objetivos.
+
+    Returns:
+        float: Valor = prioridad * cov.
+    """
+    return targets[op.tid].priority * op.cov
+
 
 def repair_and_score(x, inst: Instance, return_meta: bool = False):
     """
-    Repair a binary vector x to remove overlaps and resource violations.
-    Returns repaired x, objectives (neg_coverage, energy_total, makespan_crit).
-    When return_meta=True, an additional dictionary with coverage/constraint details is returned.
+    Repara un vector binario y calcula objetivos (neg_coverage, energía, makespan).
+
+    - Elimina solapes por satélite y excesos de energía/tiempo.
+    - Penaliza falta de cobertura en objetivos críticos (aumenta makespan).
+
+    Args:
+        x (array-like): Vector binario de selección.
+        inst (Instance): Instancia con satélites, objetivos y oportunidades.
+        return_meta (bool): Si True, devuelve meta con coberturas/penalizaciones.
+
+    Returns:
+        tuple: (vector reparado, objetivos) o (vector reparado, objetivos, meta) si return_meta=True.
     """
     x = np.array(x, dtype=int)
     ops = inst.ops
@@ -39,12 +58,20 @@ def repair_and_score(x, inst: Instance, return_meta: bool = False):
     observed_targets = set()
 
     # enforce per-satellite feasibility greedily by value density
+# enforce per-satellite feasibility WITHOUT re-optimizing:
+# keep the order already in by_sat (we sorted by start above)
     for s, ops_s in by_sat.items():
+
         ops_s_sorted = sorted(
             ops_s,
-            key=lambda o: (expected_value(o, targets) / max(o.energy, 1e-6)),
+            key=lambda o: (
+                expected_value(o, targets) / max(o.energy, 1e-6),
+                1.0 if targets[o.tid].critical else 0.0,   # favorece críticos
+                -o.end                                      # y los que terminan antes
+            ),
             reverse=True,
         )
+
         schedule = []
         e_used = 0.0
         t_used = 0.0
@@ -81,21 +108,29 @@ def repair_and_score(x, inst: Instance, return_meta: bool = False):
             coverage_total += val
             target_obs_count[o.tid] += 1
             observed_targets.add(o.tid)
-            # slew
-            if idx > 0:
-                theta_diff = abs(schedule[idx-1].theta - o.theta)
-                energy_total += slew_coef * theta_diff
-            else:
-                if prev_theta is not None:
-                    energy_total += slew_coef * abs(prev_theta - o.theta)
+
+            # sin costos de slew / theta
             energy_total += o.energy
+
+            if targets[o.tid].critical and (o.tid not in first_finish or o.end < first_finish[o.tid]):
+                first_finish[o.tid] = o.end
+
 
             # makespan over critical targets
             if targets[o.tid].critical and (o.tid not in first_finish or o.end < first_finish[o.tid]):
                 first_finish[o.tid] = o.end
 
+        # después de construir 'schedule' y antes de sumar al total:
         if schedule:
-            last_theta[s] = schedule[-1].theta
+            # colapsa múltiples observaciones por target crítico a la más temprana
+            earliest_by_crit_tid = {}
+            for o in schedule:
+                if targets[o.tid].critical:
+                    if (o.tid not in earliest_by_crit_tid) or (o.end < earliest_by_crit_tid[o.tid].end):
+                        earliest_by_crit_tid[o.tid] = o
+            # marca todas como aceptadas, pero si querés ser más agresivo,
+            # podés descartar las observaciones críticas posteriores del mismo tid.
+
 
     if first_finish:
         makespan = max(first_finish.values())
@@ -132,5 +167,15 @@ def repair_and_score(x, inst: Instance, return_meta: bool = False):
     return repaired, (neg_coverage, energy_total, makespan)
 
 def evaluate_vector(x, inst: Instance):
+    """
+    Evalúa un vector binario reparándolo y retornando los objetivos.
+
+    Args:
+        x (array-like): Selección binaria de oportunidades.
+        inst (Instance): Instancia de planificación.
+
+    Returns:
+        tuple: Objetivos (neg_coverage, energy_total, makespan_crit).
+    """
     _, objs = repair_and_score(x, inst)
     return objs

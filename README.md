@@ -1,6 +1,7 @@
-# Planificación Multiobjetivo de Observación Satelital
+# Algoritmos avanzados de búsqueda y optimización — Planificación satelital
 
-Este repositorio implementa el proyecto **“Planificación Multiobjetivo de Observación Satelital para Cobertura de Eventos Críticos”**. El código modela constelaciones LEO de 5 satélites, genera 60 objetivos críticos con 800 oportunidades de observación y ejecuta las tres etapas descritas en el informe: modelado formal, desarrollo de metaheurísticas evolutivas/híbridas y experimentación comparativa.
+Ignacio Carbajal · Federico Diaz · Joaquín Perez  
+29 de noviembre de 2025
 
 ## Qué hace este proyecto
 - Modela observación satelital como un problema multiobjetivo con tres metas: **cobertura** (se minimiza `-coverage`), **energía** y **makespan** (tiempo hasta cubrir objetivos críticos).
