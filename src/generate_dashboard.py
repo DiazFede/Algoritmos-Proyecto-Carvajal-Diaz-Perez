@@ -9,6 +9,15 @@ TARGET_HTML = OUT_DIR / "dashboard.html"
 
 
 def read_csv(name: str) -> pd.DataFrame:
+    """
+    Lee un CSV de la carpeta de outputs si existe.
+
+    Args:
+        name (str): Nombre del archivo CSV.
+
+    Returns:
+        pd.DataFrame: Datos leídos o DataFrame vacío si no existe.
+    """
     path = OUT_DIR / name
     if path.exists():
         return pd.read_csv(path)
@@ -16,6 +25,12 @@ def read_csv(name: str) -> pd.DataFrame:
 
 
 def load_success_metrics():
+    """
+    Carga el JSON de métricas de éxito si existe.
+
+    Returns:
+        dict: Métricas cargadas o diccionario vacío.
+    """
     path = OUT_DIR / "success_metrics.json"
     if path.exists():
         with open(path, "r", encoding="utf-8") as fh:
@@ -24,6 +39,15 @@ def load_success_metrics():
 
 
 def scatter_payload(df: pd.DataFrame) -> list:
+    """
+    Convierte un DataFrame en payload de puntos (x=cobertura, y=energía).
+
+    Args:
+        df (pd.DataFrame): DataFrame con coverage_pct y energy.
+
+    Returns:
+        list: Lista de dicts con x,y para Chart.js.
+    """
     rows = []
     if df.empty:
         return rows
@@ -33,6 +57,15 @@ def scatter_payload(df: pd.DataFrame) -> list:
 
 
 def summary_payload(df: pd.DataFrame) -> dict:
+    """
+    Convierte resumen en payload para barras.
+
+    Args:
+        df (pd.DataFrame): DataFrame con columnas algorithm, coverage_pct, energy, makespan.
+
+    Returns:
+        dict: Estructura con labels y listas de valores.
+    """
     if df.empty:
         return {"labels": [], "coverage": [], "energy": [], "makespan": []}
     labels = df["algorithm"].tolist()
@@ -43,6 +76,15 @@ def summary_payload(df: pd.DataFrame) -> dict:
 
 
 def render_html(data: dict):
+    """
+    Renderiza el HTML del dashboard y lo guarda en outputs/dashboard.html.
+
+    Args:
+        data (dict): Diccionario con scatters, summary y success.
+
+    Returns:
+        Path: Ruta al archivo HTML generado.
+    """
     html = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -107,28 +149,28 @@ def render_html(data: dict):
 </head>
 <body>
   <header>
-    <h1>Planificación Multiobjetivo · Dashboard interactivo</h1>
-    <p>Comparación visual de Greedy, MOSA, NSGA-II y NSGA-II + Tabú utilizando los resultados generados por <span class="code">run_experiments.py</span>.</p>
+    <h1>Planificación Multiobjetivo — Dashboard interactivo</h1>
+    <p>Greedy (baseline por semilla) vs NSGA-II (frente completo) con resultados de <span class="code">run_experiments.py</span>.</p>
   </header>
   <main>
     <section>
-      <h2>Front Pareto (Cobertura vs Energía)</h2>
+      <h2>Frente de Pareto (Cobertura vs Energía)</h2>
       <canvas id="frontChart" height="320"></canvas>
     </section>
     <section>
       <h2>Resumen Promedios</h2>
-      <p style="color:#cfd8f5;margin-top:-8px;font-size:0.9rem;">Cobertura (%), Energía y Makespan (tiempo en segundos hasta cubrir todos los objetivos críticos) se muestran en barras para facilitar la comparación.</p>
+      <p style="color:#cfd8f5;margin-top:-8px;font-size:0.9rem;">Cobertura (%), Energía y Makespan para Greedy vs NSGA-II.</p>
       <canvas id="summaryChart" height="320"></canvas>
     </section>
     <section>
-      <h2>Métricas de Éxito</h2>
+      <h2>Métricas de éxito</h2>
       <ul class="meta" id="metrics"></ul>
     </section>
     <section>
       <h2>Glosario rápido</h2>
       <ul class="meta">
         <li><strong>Cobertura (%):</strong> Porcentaje de valor esperado cubierto respecto al máximo de la instancia.</li>
-        <li><strong>Energía:</strong> Consumo total de las observaciones aceptadas (unidades arbitrarias).</li>
+        <li><strong>Energía:</strong> Consumo total de las observaciones aceptadas.</li>
         <li><strong>Makespan:</strong> Tiempo (s) hasta completar la primera observación de cada objetivo crítico.</li>
       </ul>
     </section>
@@ -144,29 +186,16 @@ def render_html(data: dict):
       data: {{
         datasets: [
           {{
-            label: 'NSGA-II',
+            label: 'NSGA-II (frente Pareto completo)',
             data: scatterData.nsga2,
             backgroundColor: 'rgba(92, 169, 255, 0.8)'
           }},
           {{
-            label: 'MOSA',
-            data: scatterData.mosa,
-            backgroundColor: 'rgba(255, 164, 63, 0.8)',
-            pointStyle: 'crossRot'
-          }},
-          {{
-            label: 'Greedy',
+            label: 'Greedy (1 plan por semilla)',
             data: scatterData.greedy,
             backgroundColor: 'rgba(124, 230, 135, 1)',
-            pointRadius: 6,
+            pointRadius: 7,
             pointStyle: 'triangle'
-          }},
-          {{
-            label: 'NSGA-II + Tabú',
-            data: scatterData.tabu,
-            backgroundColor: 'rgba(244, 92, 92, 0.85)',
-            pointRadius: 6,
-            pointStyle: 'rect'
           }}
         ]
       }},
@@ -247,12 +276,24 @@ def render_html(data: dict):
     }});
 
     const metricsUl = document.getElementById('metrics');
+    const labelMap = {{
+      nsga_mean_hv: 'HV promedio NSGA-II',
+      nsga_global_hv: 'HV global NSGA-II',
+      coverage_gain_vs_greedy: 'Ganancia de cobertura vs Greedy (puntos %)',
+      energy_delta_vs_greedy: 'Delta de energía vs Greedy (unid.)'
+    }};
+    const fmt = (v) => {{
+      if (v === null || v === undefined || Number.isNaN(v)) return 'N/A';
+      if (typeof v === 'number') return v.toFixed(3);
+      return v;
+    }};
     const entries = Object.entries(successMetrics);
     if (entries.length === 0) {{
       metricsUl.innerHTML = '<li>No se encontraron success_metrics.json</li>';
     }} else {{
       entries.forEach(([key, value]) => {{
-        metricsUl.innerHTML += `<li><strong>${{key}}:</strong> ${{value}}</li>`;
+        const label = labelMap[key] || key;
+        metricsUl.innerHTML += `<li><strong>${{label}}:</strong> ${{fmt(value)}}</li>`;
       }});
     }}
   </script>
@@ -264,19 +305,16 @@ def render_html(data: dict):
 
 
 def main():
+    """Genera el dashboard HTML a partir de los CSV/JSON en outputs."""
     nsga = scatter_payload(read_csv("front_nsga2.csv"))
-    mosa = scatter_payload(read_csv("mosa.csv"))
     greedy = scatter_payload(read_csv("baseline.csv"))
-    tabu = scatter_payload(read_csv("tabu.csv"))
     summary = summary_payload(read_csv("summary_metrics.csv"))
     success = load_success_metrics()
 
     data = {
         "scatters": {
             "nsga2": nsga,
-            "mosa": mosa,
             "greedy": greedy,
-            "tabu": tabu,
         },
         "summary": summary,
         "success": success,

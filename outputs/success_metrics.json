@@ -1,6 +1,6 @@
 {
-  "nsga_mean_hv": 0.02826104878477115,
-  "nsga_global_hv": 0.05467547696701338,
-  "tabu_coverage_success_rate": 0.0,
-  "energy_reduction_vs_greedy": -43.8251202968149
+  "nsga_mean_hv": 0.0,
+  "nsga_global_hv": 0.0,
+  "coverage_gain_vs_greedy": -0.06621815608750126,
+  "energy_delta_vs_greedy": -8.299135830711634
 }
