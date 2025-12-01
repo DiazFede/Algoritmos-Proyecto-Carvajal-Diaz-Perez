@@ -23,7 +23,7 @@ from .nsga2_run import run_nsga2
 from .mosa import run_mosa
 from .tabu import tabu_improve
 
-ENERGY_MAX = 200.0
+ENERGY_MAX = 100
 TIME_MAX = 600.0
 HV_REF = np.array([1.0, 1.0, 1.0])
 SUMMARY_WEIGHTS = np.array([0.5, 0.35, 0.15])
